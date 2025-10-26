@@ -1,43 +1,50 @@
 
 import React, { useState, useEffect } from 'react';
-import type { LeaveRequest, Personnel } from '../types';
+import type { LeaveRequest, Personnel, NewRecord } from '../types';
 import Modal from './Modal';
 import { useToast } from './Toast';
 import { PlusIcon, CheckIcon, XMarkIcon, FolderOpenIcon } from './Icons';
 import JalaliDatePicker from './JalaliDatePicker';
 import { formatJalaliDate, jalaliToGregorian } from '../utils/jalali';
 import { useData } from './DataContext';
+import { useAuth } from './AuthContext';
 
 const AddLeaveModal: React.FC<{
     isOpen: boolean;
     onClose: () => void;
-    onSubmit: (request: Omit<LeaveRequest, 'id' | 'status'>) => void;
+    onSubmit: (request: NewRecord<LeaveRequest>) => void;
     isSubmitting: boolean;
     personnel: Personnel[];
-}> = ({ isOpen, onClose, onSubmit, isSubmitting, personnel }) => {
-    const [personnelId, setPersonnelId] = useState<number>(personnel[0]?.id || 0);
+    currentUser: Personnel | null;
+}> = ({ isOpen, onClose, onSubmit, isSubmitting, personnel, currentUser }) => {
+    const isManager = currentUser?.role === 'مدیر' || currentUser?.role === 'سرشیفت';
+    
+    // If not a manager, default to the current user and make the dropdown read-only.
+    // Otherwise, default to the first person in the list.
+    const defaultPersonnelId = !isManager && currentUser ? currentUser.id : (personnel[0]?.id || 0);
+    
+    const [personnelId, setPersonnelId] = useState<number>(defaultPersonnelId);
     const [startDate, setStartDate] = useState<string | null>(null);
     const [endDate, setEndDate] = useState<string | null>(null);
 
-    // Reset form fields when modal opens/closes
+    // Reset form fields when modal opens/closes, respecting the current user's role
     useEffect(() => {
         if (isOpen) {
-            setPersonnelId(personnel[0]?.id || 0);
+            setPersonnelId(!isManager && currentUser ? currentUser.id : (personnel[0]?.id || 0));
             setStartDate(null);
             setEndDate(null);
         }
-    }, [isOpen, personnel]);
+    }, [isOpen, personnel, currentUser, isManager]);
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
         if (personnelId && startDate && endDate) {
-            onSubmit({ personnelId, startDate, endDate });
+            onSubmit({ personnel_id: personnelId, start_date: startDate, end_date: endDate, status: 'در انتظار' });
         }
     };
     
     const handleSelectStartDate = (date: string | null) => {
         setStartDate(date);
-        // If start date changes and is after current end date, clear end date
         if (date && endDate) {
             const [sY, sM, sD] = date.split('/').map(Number);
             const [eY, eM, eD] = endDate.split('/').map(Number);
@@ -59,16 +66,23 @@ const AddLeaveModal: React.FC<{
                     name="personnelId" 
                     id="personnelId" 
                     required 
-                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500"
+                    className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-100 dark:disabled:bg-slate-700/50"
                     value={personnelId}
                     onChange={(e) => setPersonnelId(Number(e.target.value))}
+                    disabled={!isManager}
                     aria-label="انتخاب پرسنل برای مرخصی"
                 >
-                    {personnel.map(p => (
-                    <option key={p.id} value={p.id}>
-                        {p.name} {p.family} ({p.status}) {/* Display status */}
-                    </option>
-                    ))}
+                    {isManager ? (
+                        personnel.map(p => (
+                            <option key={p.id} value={p.id}>
+                                {p.name} {p.family}
+                            </option>
+                        ))
+                    ) : currentUser ? (
+                        <option value={currentUser.id}>
+                            {currentUser.name} {currentUser.family}
+                        </option>
+                    ) : null}
                 </select>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -116,21 +130,17 @@ const SkeletonRow: React.FC = () => (
 );
 
 const LeaveManagement: React.FC = () => {
-  const { personnel, setPersonnel, leaveRequests, setLeaveRequests } = useData();
+  const { personnel, leaveRequests, addLeaveRequest, updateLeaveRequest, updatePersonnelStatus, loading } = useData();
+  const { user } = useAuth();
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const { showToast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 700);
-    return () => clearTimeout(timer);
-  }, []);
   
   const sortedLeaveRequests = [...leaveRequests].sort((a, b) => {
     if (a.status === 'در انتظار' && b.status !== 'در انتظار') return -1;
     if (a.status !== 'در انتظار' && b.status === 'در انتظار') return 1;
-    return b.startDate.localeCompare(a.startDate);
+    // Assuming created_at exists and is a string that can be compared
+    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
   });
 
   const getPersonnelName = (id: number) => {
@@ -146,33 +156,44 @@ const LeaveManagement: React.FC = () => {
     }
   };
   
-  const handleAddLeave = async (requestData: Omit<LeaveRequest, 'id' | 'status'>) => {
+  const handleAddLeave = async (requestData: NewRecord<LeaveRequest>) => {
     setIsSubmitting(true);
-    const newRequest: LeaveRequest = {
-      id: Date.now(),
-      ...requestData,
-      status: 'در انتظار',
-    };
-    await new Promise(res => setTimeout(res, 500));
-    setLeaveRequests(prev => [newRequest, ...prev]);
-    setIsSubmitting(false);
-    setIsAddModalOpen(false);
-    showToast('درخواست مرخصی با موفقیت ثبت شد.', 'success');
-  };
-
-  const handleStatusChange = (id: number, newStatus: 'تایید شده' | 'رد شده', personnelId: number) => {
-    setLeaveRequests(prev => 
-        prev.map(req => req.id === id ? { ...req, status: newStatus } : req)
-    );
-
-    if (newStatus === 'تایید شده') {
-        setPersonnel(prev => prev.map(p => p.id === personnelId ? { ...p, status: 'مرخصی' } : p));
+    try {
+        await addLeaveRequest(requestData);
+        setIsAddModalOpen(false);
+        showToast('درخواست مرخصی با موفقیت ثبت شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در ثبت درخواست: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
     }
-    
-    const message = newStatus === 'تایید شده' ? 'درخواست مرخصی تایید شد.' : 'درخواست مرخصی رد شد.';
-    showToast(message, 'success');
   };
 
+  const handleStatusChange = async (id: number, newStatus: 'تایید شده' | 'رد شده', personnelId: number) => {
+    try {
+        await updateLeaveRequest(id, { status: newStatus });
+
+        // If approved, update the personnel's status as well.
+        // If rejected, we might need logic to revert status if it was previously 'مرخصی', but for now we keep it simple.
+        if (newStatus === 'تایید شده') {
+            await updatePersonnelStatus(personnelId, 'مرخصی');
+        } else if (newStatus === 'رد شده') {
+            // Optional: Revert status to 'فعال' if the user was on leave because of THIS request.
+            // This requires more complex state management, so we'll leave it as an improvement.
+            // For now, we assume status is managed elsewhere or manually corrected.
+            // A simple check could be to see if any OTHER approved leave requests exist for this user.
+             await updatePersonnelStatus(personnelId, 'فعال');
+        }
+        
+        const message = newStatus === 'تایید شده' ? 'درخواست مرخصی تایید شد.' : 'درخواست مرخصی رد شد.';
+        showToast(message, 'success');
+
+    } catch(error: any) {
+        showToast(`خطا در تغییر وضعیت: ${error.message}`, 'error');
+    }
+  };
+
+  const canManage = user?.role === 'مدیر' || user?.role === 'سرشیفت';
 
   return (
     <>
@@ -197,43 +218,44 @@ const LeaveManagement: React.FC = () => {
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">تاریخ شروع</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">تاریخ پایان</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">وضعیت</th>
-                <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>
+                {canManage && <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>}
               </tr>
             </thead>
             <tbody className="animate-stagger-in">
-              {isLoading ? (
+              {loading ? (
                 Array.from({ length: 4 }).map((_, i) => <SkeletonRow key={i} />)
               ) : sortedLeaveRequests.length > 0 ? sortedLeaveRequests.map((request, index) => (
                 <tr key={request.id} className="border-b border-gray-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/60" style={{ animationDelay: `${index * 50}ms` }}>
-                  <td className="p-4 font-medium">{getPersonnelName(request.personnelId)}</td>
-                  <td className="p-4">{formatJalaliDate(request.startDate)}</td>
-                  <td className="p-4">{formatJalaliDate(request.endDate)}</td>
+                  <td className="p-4 font-medium">{getPersonnelName(request.personnel_id)}</td>
+                  <td className="p-4">{formatJalaliDate(request.start_date)}</td>
+                  <td className="p-4">{formatJalaliDate(request.end_date)}</td>
                   <td className="p-4">
                     <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusClass(request.status)}`}>
                       {request.status}
                     </span>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                    {request.status === 'در انتظار' && (
-                      <>
-                          <button onClick={() => handleStatusChange(request.id, 'تایید شده', request.personnelId)} className="p-1.5 rounded-full text-gray-400 hover:bg-green-100 dark:hover:bg-green-500/20 hover:text-green-600 dark:hover:text-green-300" title="تایید" aria-label={`تایید درخواست مرخصی ${getPersonnelName(request.personnelId)}`}>
-                            <CheckIcon className="w-5 h-5" />
-                          </button>
-                          <button onClick={() => handleStatusChange(request.id, 'رد شده', request.personnelId)} className="p-1.5 rounded-full text-gray-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300" title="رد" aria-label={`رد درخواست مرخصی ${getPersonnelName(request.personnelId)}`}>
-                            <XMarkIcon className="w-5 h-5" />
-                          </button>
-                      </>
-                    )}
-                    {request.status !== 'در انتظار' && (
-                      <span className="text-gray-400 cursor-not-allowed">-</span>
-                    )}
-                    </div>
-                  </td>
+                  {canManage && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                      {request.status === 'در انتظار' ? (
+                        <>
+                            <button onClick={() => handleStatusChange(request.id, 'تایید شده', request.personnel_id)} className="p-1.5 rounded-full text-gray-400 hover:bg-green-100 dark:hover:bg-green-500/20 hover:text-green-600 dark:hover:text-green-300" title="تایید" aria-label={`تایید درخواست مرخصی ${getPersonnelName(request.personnel_id)}`}>
+                              <CheckIcon className="w-5 h-5" />
+                            </button>
+                            <button onClick={() => handleStatusChange(request.id, 'رد شده', request.personnel_id)} className="p-1.5 rounded-full text-gray-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-300" title="رد" aria-label={`رد درخواست مرخصی ${getPersonnelName(request.personnel_id)}`}>
+                              <XMarkIcon className="w-5 h-5" />
+                            </button>
+                        </>
+                      ) : (
+                        <span className="text-gray-400 cursor-not-allowed">-</span>
+                      )}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )) : (
                 <tr>
-                    <td colSpan={5} className="text-center p-16">
+                    <td colSpan={canManage ? 5 : 4} className="text-center p-16">
                         <div className="flex flex-col items-center gap-4 text-gray-500 dark:text-gray-400">
                             <FolderOpenIcon className="w-16 h-16 text-gray-300 dark:text-gray-600" aria-hidden="true"/>
                             <h3 className="text-lg font-medium">هیچ درخواست مرخصی ثبت نشده است</h3>
@@ -253,6 +275,7 @@ const LeaveManagement: React.FC = () => {
         onSubmit={handleAddLeave}
         isSubmitting={isSubmitting}
         personnel={personnel}
+        currentUser={user}
       />
     </>
   );

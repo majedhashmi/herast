@@ -9,11 +9,12 @@ import LeaveManagement from './components/LeaveManagement';
 import Reports from './components/Reports';
 import StatusReport from './components/StatusReport';
 import Analytics from './components/Analytics';
-import AiAssistant from './components/AiAssistant'; // New
-import { MenuIcon, SunIcon, MoonIcon } from './components/Icons';
+import { MenuIcon, SunIcon, MoonIcon, DashboardIcon } from './components/Icons';
 import { ToastProvider } from './components/Toast';
 import { ThemeProvider, useTheme } from './components/ThemeContext';
-import { DataProvider } from './components/DataContext';
+import { DataProvider, useData } from './components/DataContext';
+import { AuthProvider, useAuth } from './components/AuthContext';
+
 
 export type View = 'dashboard' | 'personnel' | 'calendar' | 'posts' | 'leaves' | 'reports' | 'status-report' | 'analytics';
 
@@ -21,6 +22,9 @@ const AppContent: React.FC = () => {
   const [activeView, setActiveView] = useState<View>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
+  const { loading: isDataLoading } = useData();
+  const { UserSwitcher } = useAuth();
+
 
   const renderView = () => {
     switch (activeView) {
@@ -45,6 +49,21 @@ const AppContent: React.FC = () => {
     }
   };
 
+  if (isDataLoading) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center bg-slate-50 dark:bg-slate-900 text-slate-600 dark:text-slate-300">
+        <div className="flex items-center gap-4 text-xl font-semibold">
+           <div className="relative w-12 h-12">
+              <div className="absolute inset-0 border-4 border-indigo-200 dark:border-indigo-800 rounded-full"></div>
+              <div className="absolute inset-0 border-t-4 border-indigo-500 dark:border-indigo-400 rounded-full animate-spin"></div>
+            </div>
+          <span>در حال بارگذاری داده‌ها...</span>
+        </div>
+         <p className="mt-4 text-sm text-slate-400 dark:text-slate-500">لطفا کمی صبر کنید</p>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen text-gray-800 dark:text-gray-200">
       <div className="flex">
@@ -57,7 +76,8 @@ const AppContent: React.FC = () => {
               </button>
                <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100 hidden sm:block">سامانه مدیریت حراست</h1>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-4">
+               <UserSwitcher />
                <button
                 onClick={toggleTheme}
                 className="p-2 rounded-full text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 focus:ring-offset-slate-50 dark:focus:ring-offset-slate-900"
@@ -82,7 +102,6 @@ const AppContent: React.FC = () => {
           </div>
         </main>
       </div>
-      <AiAssistant />
     </div>
   );
 };
@@ -93,7 +112,9 @@ const App: React.FC = () => {
     <ThemeProvider>
       <ToastProvider>
         <DataProvider>
-          <AppContent />
+          <AuthProvider>
+            <AppContent />
+          </AuthProvider>
         </DataProvider>
       </ToastProvider>
     </ThemeProvider>

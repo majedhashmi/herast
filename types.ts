@@ -1,5 +1,14 @@
-export interface Personnel {
+
+// Base type for a record that has an ID and creation timestamp from Supabase
+export interface DbRecord {
   id: number;
+  created_at: string;
+}
+
+// Type for creating a new record, where `id` and `created_at` are optional
+export type NewRecord<T extends DbRecord> = Omit<T, 'id' | 'created_at'>;
+
+export interface Personnel extends DbRecord {
   name: string;
   family: string;
   code: string;
@@ -8,37 +17,34 @@ export interface Personnel {
   status: 'فعال' | 'مرخصی' | 'غیرفعال';
 }
 
-export interface Post {
-  id: number;
+export interface Post extends DbRecord {
   name: string;
-  location: string; // New field for location
-  priority: 'عادی' | 'مهم' | 'حیاتی'; // New field for priority
-  notes?: string; // New optional field for notes
+  location: string;
+  priority: 'عادی' | 'مهم' | 'حیاتی';
+  notes?: string;
 }
 
-export interface Shift {
-  id: number;
+export interface Shift extends DbRecord {
   date: string; // e.g., "1403/05/01"
   type: 'روز' | 'شب';
-  personnelId: number;
-  postId: number;
+  personnel_id: number;
+  post_id: number;
 }
 
-export interface LeaveRequest {
-  id: number;
-  personnelId: number;
-  startDate: string; // e.g., "1403/05/10"
-  endDate: string; // e.g., "1403/05/12"
+export interface LeaveRequest extends DbRecord {
+  personnel_id: number;
+  start_date: string; // e.g., "1403/05/10"
+  end_date: string; // e.g., "1403/05/12"
   status: 'تایید شده' | 'در انتظار' | 'رد شده';
 }
 
-export interface Report {
-  id: number;
-  personnelId: number;
+export interface Report extends DbRecord {
+  personnel_id: number;
   date: string; // e.g., "1403/05/15"
   content: string;
   author: string; // Name of the person who wrote the report
 }
+
 
 export type ToastType = 'success' | 'error';
 

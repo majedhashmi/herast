@@ -1,11 +1,12 @@
 
-import React, { useState, useEffect } from 'react';
-import type { Report, Personnel } from '../types';
+import React, { useState } from 'react';
+import type { Report, Personnel, NewRecord } from '../types';
 import Modal from './Modal';
 import { useToast } from './Toast';
 import { EditIcon, DeleteIcon, PlusIcon, FolderOpenIcon, ExclamationTriangleIcon } from './Icons';
 import { formatJalaliDate, getTodayJalaliString } from '../utils/jalali';
 import { useData } from './DataContext';
+import { useAuth } from './AuthContext';
 
 const SkeletonReportCard: React.FC = () => (
     <div className="bg-white dark:bg-[#1f2937] p-4 rounded-xl border border-gray-200 dark:border-[#374151] shadow-sm">
@@ -25,9 +26,9 @@ const SkeletonReportCard: React.FC = () => (
 
 
 const Reports: React.FC = () => {
-    const { reports, setReports, personnel } = useData();
+    const { reports, personnel, addReport, updateReport, deleteReport, loading } = useData();
+    const { user } = useAuth();
     const { showToast } = useToast();
-    const [isLoading, setIsLoading] = useState(true);
     
     const [isAddModalOpen, setIsAddModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -37,11 +38,6 @@ const Reports: React.FC = () => {
     const [deletingReport, setDeletingReport] = useState<Report | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    useEffect(() => {
-        const timer = setTimeout(() => setIsLoading(false), 700);
-        return () => clearTimeout(timer);
-    }, []);
-
     const getPersonnelName = (id: number) => {
         const p = personnel.find(p => p.id === id);
         return p ? `${p.name} ${p.family}` : 'نامشخص';
@@ -49,21 +45,28 @@ const Reports: React.FC = () => {
 
     const handleAddReport = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
+        if (!user) {
+            showToast('برای ثبت گزارش باید وارد شوید.', 'error');
+            return;
+        }
         setIsSubmitting(true);
         const formData = new FormData(e.currentTarget);
         const todayFormatted = getTodayJalaliString();
-        const newReport: Report = {
-            id: Date.now(),
-            personnelId: Number(formData.get('personnelId')),
+        const newReport: NewRecord<Report> = {
+            personnel_id: Number(formData.get('personnelId')),
             date: todayFormatted,
             content: formData.get('content') as string,
-            author: 'محمد احمدی', // Assuming the current user is the admin
+            author: `${user.name} ${user.family}`,
         };
-        await new Promise(res => setTimeout(res, 500));
-        setReports(prev => [newReport, ...prev]);
-        setIsSubmitting(false);
-        setIsAddModalOpen(false);
-        showToast('گزارش جدید با موفقیت ثبت شد.', 'success');
+        try {
+            await addReport(newReport);
+            setIsAddModalOpen(false);
+            showToast('گزارش جدید با موفقیت ثبت شد.', 'success');
+        } catch(error: any) {
+            showToast(`خطا در ثبت گزارش: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const openEditModal = (report: Report) => {
@@ -76,17 +79,20 @@ const Reports: React.FC = () => {
         if(!editingReport) return;
         setIsSubmitting(true);
         const formData = new FormData(e.currentTarget);
-        const updatedReport: Report = {
-            ...editingReport,
-            personnelId: Number(formData.get('personnelId')),
+        const updatedData: Partial<Report> = {
+            personnel_id: Number(formData.get('personnelId')),
             content: formData.get('content') as string,
         };
-        await new Promise(res => setTimeout(res, 500));
-        setReports(prev => prev.map(r => r.id === updatedReport.id ? updatedReport : r));
-        setIsSubmitting(false);
-        setIsEditModalOpen(false);
-        setEditingReport(null);
-        showToast('گزارش با موفقیت به‌روزرسانی شد.', 'success');
+        try {
+            await updateReport(editingReport.id, updatedData);
+            setIsEditModalOpen(false);
+            setEditingReport(null);
+            showToast('گزارش با موفقیت به‌روزرسانی شد.', 'success');
+        } catch(error: any) {
+            showToast(`خطا در ویرایش گزارش: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const openDeleteModal = (report: Report) => {
@@ -97,13 +103,19 @@ const Reports: React.FC = () => {
     const handleConfirmDelete = async () => {
         if (!deletingReport) return;
         setIsSubmitting(true);
-        await new Promise(res => setTimeout(res, 500));
-        setReports(prev => prev.filter(r => r.id !== deletingReport.id));
-        setIsSubmitting(false);
-        setIsDeleteModalOpen(false);
-        setDeletingReport(null);
-        showToast('گزارش با موفقیت حذف شد.', 'success');
+        try {
+            await deleteReport(deletingReport.id);
+            setIsDeleteModalOpen(false);
+            setDeletingReport(null);
+            showToast('گزارش با موفقیت حذف شد.', 'success');
+        } catch(error: any) {
+            showToast(`خطا در حذف گزارش: ${error.message}`, 'error');
+        } finally {
+            setIsSubmitting(false);
+        }
     };
+
+    const canManage = user?.role === 'مدیر' || user?.role === 'سرشیفت';
 
     return (
         <>
@@ -121,25 +133,27 @@ const Reports: React.FC = () => {
                 </div>
 
                 <div className="space-y-4 animate-stagger-in">
-                    {isLoading ? (
+                    {loading ? (
                         Array.from({ length: 3 }).map((_, i) => <SkeletonReportCard key={i} />)
                     ) : reports.length > 0 ? reports.map((report, index) => (
                         <div key={report.id} className="bg-white dark:bg-[#1f2937] p-4 rounded-xl border border-gray-200 dark:border-[#374151] group shadow-sm hover:shadow-lg transition-shadow duration-300" style={{ animationDelay: `${index * 100}ms` }}>
                            <div className="flex justify-between items-start border-b border-gray-200 dark:border-slate-700 pb-3 mb-3">
                                 <div>
-                                    <p className="font-bold text-gray-800 dark:text-gray-100">{getPersonnelName(report.personnelId)}</p>
+                                    <p className="font-bold text-gray-800 dark:text-gray-100">{getPersonnelName(report.personnel_id)}</p>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">ثبت توسط: {report.author}</p>
                                 </div>
                                 <div className="flex items-center gap-4">
                                     <span className="text-sm text-gray-500 dark:text-gray-400">{formatJalaliDate(report.date)}</span>
-                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button onClick={() => openEditModal(report)} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-indigo-500 dark:hover:text-indigo-400" aria-label={`ویرایش گزارش ${getPersonnelName(report.personnelId)} در تاریخ ${formatJalaliDate(report.date)}`}>
-                                            <EditIcon className="w-5 h-5"/>
-                                        </button>
-                                        <button onClick={() => openDeleteModal(report)} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-red-500 dark:hover:text-red-400" aria-label={`حذف گزارش ${getPersonnelName(report.personnelId)} در تاریخ ${formatJalaliDate(report.date)}`}>
-                                            <DeleteIcon className="w-5 h-5"/>
-                                        </button>
-                                    </div>
+                                    {canManage && (
+                                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button onClick={() => openEditModal(report)} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-indigo-500 dark:hover:text-indigo-400" aria-label={`ویرایش گزارش ${getPersonnelName(report.personnel_id)} در تاریخ ${formatJalaliDate(report.date)}`}>
+                                                <EditIcon className="w-5 h-5"/>
+                                            </button>
+                                            <button onClick={() => openDeleteModal(report)} className="p-2 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-700 hover:text-red-500 dark:hover:text-red-400" aria-label={`حذف گزارش ${getPersonnelName(report.personnel_id)} در تاریخ ${formatJalaliDate(report.date)}`}>
+                                                <DeleteIcon className="w-5 h-5"/>
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                            </div>
                            <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{report.content}</p>
@@ -192,7 +206,7 @@ const Reports: React.FC = () => {
                     <form onSubmit={handleUpdateReport} className="space-y-4">
                         <div>
                             <label htmlFor="edit-rep-personnelId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">مربوط به پرسنل</label>
-                            <select name="personnelId" id="edit-rep-personnelId" defaultValue={editingReport.personnelId} required className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500" aria-label="انتخاب پرسنل مرتبط با گزارش">
+                            <select name="personnelId" id="edit-rep-personnelId" defaultValue={editingReport.personnel_id} required className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 focus:ring-2 focus:ring-indigo-500" aria-label="انتخاب پرسنل مرتبط با گزارش">
                                 {personnel.map(p => (
                                 <option key={p.id} value={p.id}>{p.name} {p.family}</option>
                                 ))}
@@ -229,7 +243,7 @@ const Reports: React.FC = () => {
                     </h3>
                     <p className="text-gray-600 dark:text-gray-300">
                         گزارش مربوط به 
-                        <span className="font-bold mx-1">{deletingReport && getPersonnelName(deletingReport.personnelId)}</span>
+                        <span className="font-bold mx-1">{deletingReport && getPersonnelName(deletingReport.personnel_id)}</span>
                         در تاریخ
                         <span className="font-bold mx-1">{deletingReport && formatJalaliDate(deletingReport.date)}</span>
                         حذف خواهد شد. این عمل
@@ -237,7 +251,7 @@ const Reports: React.FC = () => {
                     </p>
                     <div className="flex flex-col sm:flex-row justify-center gap-3 pt-8 w-full">
                         <button type="button" onClick={() => setIsDeleteModalOpen(false)} className="px-6 py-2.5 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-slate-600 w-full sm:w-auto order-2 sm:order-1" aria-label="انصراف از حذف گزارش">انصراف</button>
-                        <button type="button" onClick={handleConfirmDelete} disabled={isSubmitting} className="px-6 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 dark:disabled:bg-red-500/50 w-full sm:w-auto order-1 sm:order-2" aria-label={`تایید حذف گزارش ${deletingReport && getPersonnelName(deletingReport.personnelId)}`}>
+                        <button type="button" onClick={handleConfirmDelete} disabled={isSubmitting} className="px-6 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-red-400 dark:disabled:bg-red-500/50 w-full sm:w-auto order-1 sm:order-2" aria-label={`تایید حذف گزارش ${deletingReport && getPersonnelName(deletingReport.personnel_id)}`}>
                             {isSubmitting ? 'در حال حذف...' : 'بله، حذف کن'}
                         </button>
                     </div>

@@ -1,4 +1,5 @@
 
+
 import React from 'react';
 import type { Personnel, Shift, LeaveRequest, Post } from '../types';
 import { PrinterIcon } from './Icons';
@@ -24,9 +25,10 @@ const StatusReport: React.FC = () => {
     const personnelOnLeaveIds = new Set<number>();
     
     // Categorize personnel on shift
+    // fix: Changed personnelId and postId to personnel_id and post_id to match type definition.
     shifts.filter(s => s.date === todayFormatted).forEach(shift => {
-        const person = personnel.find(p => p.id === shift.personnelId);
-        const post = posts.find(p => p.id === shift.postId);
+        const person = personnel.find(p => p.id === shift.personnel_id);
+        const post = posts.find(p => p.id === shift.post_id);
         if (person) {
             personnelOnShiftIds.add(person.id);
             const personWithDetails = { ...person, shiftType: shift.type, postName: post?.name };
@@ -39,8 +41,9 @@ const StatusReport: React.FC = () => {
     });
 
     // Categorize personnel on leave
-    leaveRequests.filter(req => req.status === 'تایید شده' && todayFormatted >= req.startDate && todayFormatted <= req.endDate).forEach(req => {
-        const person = personnel.find(p => p.id === req.personnelId);
+    // fix: Changed property names to snake_case to match type definition.
+    leaveRequests.filter(req => req.status === 'تایید شده' && todayFormatted >= req.start_date && todayFormatted <= req.end_date).forEach(req => {
+        const person = personnel.find(p => p.id === req.personnel_id);
         if (person && !personnelOnShiftIds.has(person.id)) { // A person can't be on shift and on leave
             personnelOnLeaveIds.add(person.id);
             onLeave.push(person);

@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import type { Personnel, Shift, Post, LeaveRequest, GeneratedShift, AiGeneratedResponse } from '../types';
+import type { Personnel, Shift, Post, LeaveRequest, GeneratedShift, AiGeneratedResponse, NewRecord } from '../types';
 import { PlusIcon, EditIcon, DeleteIcon, FilterIcon, ExclamationTriangleIcon } from './Icons';
 import Modal from './Modal';
 import { getJalaliDate, getDaysInJalaliMonth, getFirstDayOfMonth, jalaliMonthNames, formatJalaliDate, jalaliToGregorian, addDaysJalali, toPersianDigits } from '../utils/jalali';
@@ -94,15 +94,16 @@ const ShiftGenerationModal: React.FC<ShiftGenerationModalProps> = ({
             }));
             const formattedPosts = allPosts.map(p => ({ id: p.id, name: p.name, location: p.location, priority: p.priority, notes: p.notes }));
 
+            // fix: Corrected property names to snake_case to align with type definitions.
             const prompt = `شما یک برنامه ریز شیفت هوشمند برای پرسنل حراست هستید.
             با در نظر گرفتن پرسنل زیر:
             ${JSON.stringify(formattedPersonnel)}
             و پست‌های زیر با جزئیات کامل:
             ${JSON.stringify(formattedPosts)}
             و شیفت‌های موجود (برای جلوگیری از تداخل):
-            ${JSON.stringify(currentShifts.map(s => ({ date: s.date, personnelId: s.personnelId, postId: s.postId, type: s.type })))}
+            ${JSON.stringify(currentShifts.map(s => ({ date: s.date, personnelId: s.personnel_id, postId: s.post_id, type: s.type })))}
             و درخواست‌های مرخصی تایید شده:
-            ${JSON.stringify(leaveRequests.filter(lr => lr.status === 'تایید شده').map(lr => ({ personnelId: lr.personnelId, startDate: lr.startDate, endDate: lr.endDate })))}
+            ${JSON.stringify(leaveRequests.filter(lr => lr.status === 'تایید شده').map(lr => ({ personnelId: lr.personnel_id, startDate: lr.start_date, endDate: lr.end_date })))}
             
             یک برنامه شیفت پیشنهادی برای هر روز از ${startDate} تا ${endDate} تولید کنید.
             هر شیفت باید شامل 'date' (فرمت شمسی YYYY/MM/DD)، 'type' ('روز' یا 'شب')، 'personnelName' (نام کامل از لیست پرسنل)، و 'postName' (نام پست از لیست پست‌ها) باشد.
@@ -307,7 +308,8 @@ const ShiftGenerationModal: React.FC<ShiftGenerationModalProps> = ({
 
 
 const ShiftCalendar: React.FC = () => {
-  const { personnel, posts, shifts, leaveRequests, setShifts } = useData(); // New: Get data from context
+  // fix: Refactored to use mutation functions from DataContext instead of a non-existent `setShifts`.
+  const { personnel, posts, shifts, leaveRequests, addShift, addMultipleShifts, updateShift, deleteShift } = useData();
   const [currentDate, setCurrentDate] = useState(new Date());
   const { showToast } = useToast();
   
@@ -344,8 +346,9 @@ const ShiftCalendar: React.FC = () => {
 
   const filteredShifts = useMemo(() => {
     return shifts.filter(shift => {
-        const personnelMatch = selectedPersonnelId === 'all' || shift.personnelId === Number(selectedPersonnelId);
-        const postMatch = selectedPostId === 'all' || shift.postId === Number(selectedPostId);
+        // fix: Changed personnelId and postId to personnel_id and post_id to match type definitions.
+        const personnelMatch = selectedPersonnelId === 'all' || shift.personnel_id === Number(selectedPersonnelId);
+        const postMatch = selectedPostId === 'all' || shift.post_id === Number(selectedPostId);
         const typeMatch = selectedShiftType === 'all' || shift.type === selectedShiftType;
         return personnelMatch && postMatch && typeMatch;
     });
@@ -378,18 +381,20 @@ const ShiftCalendar: React.FC = () => {
         return `${person.name} ${person.family} غیرفعال است و نمی‌تواند شیفت داشته باشد.`;
     }
 
+    // fix: Changed property names to snake_case to match type definitions.
     const onLeave = leaveRequests.some(req => 
-      req.personnelId === personnelId &&
+      req.personnel_id === personnelId &&
       req.status === 'تایید شده' &&
-      dateStr >= req.startDate &&
-      dateStr <= req.endDate
+      dateStr >= req.start_date &&
+      dateStr <= req.end_date
     );
     if (onLeave) {
         return `${person.name} ${person.family} در این تاریخ در مرخصی است.`;
     }
 
     // Check for existing shifts for the same personnel on the same day, excluding the one being edited
-    const hasExistingShift = shiftsToCheck.some(s => s.id !== editingShiftId && s.personnelId === personnelId && s.date === dateStr);
+    // fix: Changed personnelId to personnel_id to match type definition.
+    const hasExistingShift = shiftsToCheck.some(s => s.id !== editingShiftId && s.personnel_id === personnelId && s.date === dateStr);
     if (hasExistingShift) {
         return `${person.name} ${person.family} در این تاریخ قبلاً شیفت دارد.`;
     }
@@ -407,22 +412,25 @@ const ShiftCalendar: React.FC = () => {
     const dayShifts = filteredShifts.filter(s => s.date === dateStr);
 
     let hasConflict = false;
-    const personnelIdsOnThisDay = dayShifts.map(s => s.personnelId);
+    // fix: Changed personnelId to personnel_id to match type definition.
+    const personnelIdsOnThisDay = dayShifts.map(s => s.personnel_id);
     if (new Set(personnelIdsOnThisDay).size !== personnelIdsOnThisDay.length) {
         hasConflict = true;
     }
 
     const personnelWithStatus = dayShifts.map(shift => {
-      const person = personnel.find(p => p.id === shift.personnelId);
+      // fix: Changed personnelId to personnel_id to match type definition.
+      const person = personnel.find(p => p.id === shift.personnel_id);
       if (!person) {
         return { name: 'نامشخص', status: 'نامشخص' };
       }
       
+      // fix: Changed property names to snake_case to match type definitions.
       const isOnLeave = leaveRequests.some(req => 
-        req.personnelId === person.id &&
+        req.personnel_id === person.id &&
         req.status === 'تایید شده' &&
-        dateStr >= req.startDate &&
-        dateStr <= req.endDate
+        dateStr >= req.start_date &&
+        dateStr <= req.end_date
       );
 
       type StatusWithMessage = 'فعال' | 'مرخصی' | 'غیرفعال' | 'تداخل شیفت';
@@ -461,15 +469,13 @@ const ShiftCalendar: React.FC = () => {
     setShiftConflictWarning(conflict);
   };
 
-  const generateRecurringShiftsLogic = (initialShift: Shift) => {
+  // fix: Refactored logic to be safer and avoid type issues.
+  const generateRecurringShiftsLogic = (initialShift: NewRecord<Shift>) => {
     const DURATION_IN_DAYS = 90;
     const cycle = ['روز', 'روز', 'روز', 'شب', 'شب', 'شب', 'استراحت', 'استراحت', 'استراحت'];
-    // Start index in cycle based on the type of the first shift
     const startIndex = initialShift.type === 'روز' ? 0 : 3;
 
-    const newlyGeneratedShifts: Shift[] = [];
-    // Start with all existing shifts plus the one just created by the user
-    let shiftsForCheck = [...shifts, initialShift]; 
+    const newlyGeneratedShifts: NewRecord<Shift>[] = [];
 
     for (let i = 1; i <= DURATION_IN_DAYS; i++) {
         const currentDateStr = addDaysJalali(initialShift.date, i);
@@ -477,26 +483,25 @@ const ShiftCalendar: React.FC = () => {
         const shiftTypeForDay = cycle[cycleIndex];
 
         if (shiftTypeForDay !== 'استراحت') {
-            const conflict = isPersonnelUnavailable(initialShift.personnelId, currentDateStr, null, shiftsForCheck);
+            const conflictWithExisting = isPersonnelUnavailable(initialShift.personnel_id, currentDateStr, null, shifts);
+            const conflictWithNew = newlyGeneratedShifts.some(s => s.personnel_id === initialShift.personnel_id && s.date === currentDateStr);
 
-            if (!conflict) {
-                const recurringShift: Shift = {
-                    id: Date.now() + i, // Simple unique ID generation
+            if (!conflictWithExisting && !conflictWithNew) {
+                const recurringShift: NewRecord<Shift> = {
                     date: currentDateStr,
-                    personnelId: initialShift.personnelId,
-                    postId: initialShift.postId,
+                    personnel_id: initialShift.personnel_id,
+                    post_id: initialShift.post_id,
                     type: shiftTypeForDay as 'روز' | 'شب',
                 };
                 newlyGeneratedShifts.push(recurringShift);
-                // Add the newly created shift to the list for subsequent checks to prevent internal conflicts
-                shiftsForCheck.push(recurringShift); 
             }
         }
     }
     return newlyGeneratedShifts;
   };
 
-  const handleAddShift = (e: React.FormEvent<HTMLFormElement>) => {
+  // fix: Refactored to use `addShift` and `addMultipleShifts` from context.
+  const handleAddShift = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!selectedDateForModal) return;
     const formData = new FormData(e.currentTarget);
@@ -511,33 +516,40 @@ const ShiftCalendar: React.FC = () => {
         return;
     }
 
-    const newShift: Shift = {
-        id: Date.now(),
+    const newShift: NewRecord<Shift> = {
         date: newShiftDate,
-        personnelId: personnelId,
-        postId: Number(formData.get('postId')),
+        personnel_id: personnelId,
+        post_id: Number(formData.get('postId')),
         type: formData.get('type') as 'روز' | 'شب',
     };
     
-    let allNewShifts = [newShift];
+    let allNewShifts: NewRecord<Shift>[] = [newShift];
     let recurringGenerated = false;
 
     if (generateRecurring) {
         const recurringShifts = generateRecurringShiftsLogic(newShift);
         if (recurringShifts.length > 0) {
             allNewShifts.push(...recurringShifts);
-            showToast(`شیفت اولیه و ${recurringShifts.length} شیفت آتی بر اساس الگو با موفقیت ایجاد شد.`, 'success');
-        } else {
-            showToast('شیفت اولیه ثبت شد. شیفت آتی به دلیل تداخل ایجاد نشد.', 'success');
         }
         recurringGenerated = true;
     }
     
-    setShifts(prev => [...prev, ...allNewShifts]);
-    
-    if (!recurringGenerated) {
-        showToast('شیفت جدید با موفقیت ثبت شد.', 'success');
+    try {
+        if (allNewShifts.length > 1) {
+            await addMultipleShifts(allNewShifts);
+            if (recurringGenerated) showToast(`شیفت اولیه و ${allNewShifts.length - 1} شیفت آتی با موفقیت ایجاد شد.`, 'success');
+        } else {
+            await addShift(allNewShifts[0]);
+             if (recurringGenerated) showToast('شیفت اولیه ثبت شد. شیفت آتی به دلیل تداخل ایجاد نشد.', 'success');
+        }
+
+        if (!recurringGenerated) {
+            showToast('شیفت جدید با موفقیت ثبت شد.', 'success');
+        }
+    } catch(error: any) {
+        showToast(`خطا در ثبت شیفت: ${error.message}`, 'error');
     }
+
 
     setIsAddModalOpen(false);
     setSelectedDateForModal(null);
@@ -549,11 +561,13 @@ const ShiftCalendar: React.FC = () => {
     setEditingShift(shift);
     setIsEditModalOpen(true);
     // When opening edit modal, check for conflict for the current person and date
-    const conflict = isPersonnelUnavailable(shift.personnelId, shift.date, shift.id);
+    // fix: Changed personnelId to personnel_id to match type definition.
+    const conflict = isPersonnelUnavailable(shift.personnel_id, shift.date, shift.id);
     setShiftConflictWarning(conflict);
   };
 
-  const handleUpdateShift = (e: React.FormEvent<HTMLFormElement>) => {
+  // fix: Refactored to use `updateShift` from context.
+  const handleUpdateShift = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!editingShift) return;
 
@@ -567,18 +581,21 @@ const ShiftCalendar: React.FC = () => {
         return;
     }
 
-    const updatedShift: Shift = {
-        ...editingShift,
-        personnelId: updatedPersonnelId,
-        postId: Number(formData.get('postId')),
+    const updatedData: Partial<Shift> = {
+        personnel_id: updatedPersonnelId,
+        post_id: Number(formData.get('postId')),
         type: formData.get('type') as 'روز' | 'شب',
     };
 
-    setShifts(prev => prev.map(s => s.id === updatedShift.id ? updatedShift : s));
-    setIsEditModalOpen(false);
-    setEditingShift(null);
-    setShiftConflictWarning(null);
-    showToast('شیفت با موفقیت به‌روزرسانی شد.', 'success');
+    try {
+        await updateShift(editingShift.id, updatedData);
+        setIsEditModalOpen(false);
+        setEditingShift(null);
+        setShiftConflictWarning(null);
+        showToast('شیفت با موفقیت به‌روزرسانی شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در به‌روزرسانی شیفت: ${error.message}`, 'error');
+    }
   };
   
   const handleOpenDeleteModal = (shift: Shift) => {
@@ -586,16 +603,22 @@ const ShiftCalendar: React.FC = () => {
     setIsDeleteModalOpen(true);
   };
     
-  const handleConfirmDelete = () => {
+  // fix: Refactored to use `deleteShift` from context.
+  const handleConfirmDelete = async () => {
     if (!deletingShift) return;
-    setShifts(prev => prev.filter(s => s.id !== deletingShift.id));
-    setIsDeleteModalOpen(false);
-    setDeletingShift(null);
-    showToast('شیفت با موفقیت حذف شد.', 'success');
+    try {
+        await deleteShift(deletingShift.id);
+        setIsDeleteModalOpen(false);
+        setDeletingShift(null);
+        showToast('شیفت با موفقیت حذف شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در حذف شیفت: ${error.message}`, 'error');
+    }
   };
 
-  const handleGeneratedShifts = (generatedShifts: GeneratedShift[], summary: string) => {
-    const newShifts: Shift[] = generatedShifts.map(gs => {
+  // fix: Refactored to use `addMultipleShifts` from context and create valid `NewRecord<Shift>`.
+  const handleGeneratedShifts = async (generatedShifts: GeneratedShift[], summary: string) => {
+    const newShifts: NewRecord<Shift>[] = generatedShifts.map(gs => {
         const personnelId = getPersonnelIdByName(gs.personnelName);
         const postId = getPostIdByName(gs.postName);
 
@@ -608,8 +631,8 @@ const ShiftCalendar: React.FC = () => {
             return null;
         }
 
-        // Basic check for existing shift to avoid duplicates, although AI should ideally handle this
-        const alreadyExists = shifts.some(s => s.date === gs.date && s.personnelId === personnelId && s.type === gs.type && s.postId === postId);
+        // fix: Changed property names to snake_case to match type definitions.
+        const alreadyExists = shifts.some(s => s.date === gs.date && s.personnel_id === personnelId && s.type === gs.type && s.post_id === postId);
         if (alreadyExists) {
             console.warn(`Skipping duplicate generated shift for ${gs.personnelName} on ${gs.date} (${gs.type}).`);
             return null;
@@ -623,16 +646,23 @@ const ShiftCalendar: React.FC = () => {
         }
 
         return {
-            id: Date.now() + Math.random(), // Unique ID
             date: gs.date,
             type: gs.type,
-            personnelId: personnelId,
-            postId: postId,
+            personnel_id: personnelId,
+            post_id: postId,
         };
-    }).filter(s => s !== null) as Shift[];
+    }).filter((s): s is NewRecord<Shift> => s !== null);
 
-    setShifts(prev => [...prev, ...newShifts]);
-    showToast(`تعداد ${newShifts.length} شیفت جدید بر اساس هوش مصنوعی به تقویم اضافه شد.`, 'success');
+    if (newShifts.length > 0) {
+        try {
+            await addMultipleShifts(newShifts);
+            showToast(`تعداد ${newShifts.length} شیفت جدید بر اساس هوش مصنوعی به تقویم اضافه شد.`, 'success');
+        } catch (error: any) {
+            showToast(`خطا در افزودن شیفت‌های تولید شده: ${error.message}`, 'error');
+        }
+    } else {
+        showToast('هیچ شیفت معتبری برای افزودن به تقویم تولید نشد.', 'success');
+    }
   };
 
   const getPersonnelIdByName = (fullName: string) => {
@@ -780,8 +810,10 @@ const ShiftCalendar: React.FC = () => {
                     
                     <div className="mt-1 space-y-1 w-full overflow-hidden px-1">
                         {dayShifts.map(shift => {
-                            const postName = posts.find(p => p.id === shift.postId)?.name;
-                            const personnelName = getPersonnelName(shift.personnelId);
+                            // fix: Changed postId to post_id to match type definition.
+                            const postName = posts.find(p => p.id === shift.post_id)?.name;
+                            // fix: Changed personnelId to personnel_id to match type definition.
+                            const personnelName = getPersonnelName(shift.personnel_id);
                             return (
                                 <div key={shift.id} className="relative group/shift">
                                     <div className={`p-1.5 rounded text-xs shadow-sm ${shift.type === 'روز' ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-500/20 dark:text-yellow-300' : 'bg-sky-100 text-sky-800 dark:bg-sky-500/20 dark:text-sky-300'}`}>
@@ -918,7 +950,8 @@ const ShiftCalendar: React.FC = () => {
                     <select 
                         name="personnelId" 
                         id="edit-personnelId" 
-                        defaultValue={editingShift.personnelId} 
+                        // fix: Changed personnelId to personnel_id to match type definition.
+                        defaultValue={editingShift.personnel_id} 
                         required 
                         className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                         onChange={(e) => handlePersonnelChangeInModal(e, editingShift.date, editingShift.id)}
@@ -939,7 +972,8 @@ const ShiftCalendar: React.FC = () => {
                 </div>
                 <div>
                     <label htmlFor="edit-postId" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">پست</label>
-                    <select name="postId" id="edit-postId" defaultValue={editingShift.postId} required className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" aria-label="انتخاب پست برای شیفت">
+                    {/* fix: Changed postId to post_id to match type definition. */}
+                    <select name="postId" id="edit-postId" defaultValue={editingShift.post_id} required className="w-full p-2 border border-gray-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500" aria-label="انتخاب پست برای شیفت">
                         {posts.map(p => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
@@ -993,11 +1027,13 @@ const ShiftCalendar: React.FC = () => {
             </h3>
             <p className="text-gray-600 dark:text-gray-300">
                 شیفت
-                <span className="font-bold mx-1">{deletingShift && getPersonnelName(deletingShift.personnelId)}</span>
+                {/* fix: Changed personnelId to personnel_id to match type definition. */}
+                <span className="font-bold mx-1">{deletingShift && getPersonnelName(deletingShift.personnel_id)}</span>
                 در تاریخ
                 <span className="font-bold mx-1">{deletingShift && formatJalaliDate(deletingShift.date)}</span>
                 برای پست
-                <span className="font-bold mx-1">{deletingShift && posts.find(p => p.id === deletingShift.postId)?.name}</span>
+                {/* fix: Changed postId to post_id to match type definition. */}
+                <span className="font-bold mx-1">{deletingShift && posts.find(p => p.id === deletingShift.post_id)?.name}</span>
                 نوع
                 <span className="font-bold mx-1">{deletingShift?.type}</span>
                 حذف خواهد شد. این عمل

@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect } from 'react';
-import type { Personnel } from '../types';
+import type { Personnel, NewRecord } from '../types';
 import Modal from './Modal';
 import { useToast } from './Toast';
 import { PlusIcon, EditIcon, DeleteIcon, FolderOpenIcon, ExclamationTriangleIcon } from './Icons';
 import { useData } from './DataContext';
+import { useAuth } from './AuthContext';
 
 const SkeletonRow: React.FC = () => (
     <tr className="border-b border-gray-200 dark:border-slate-700">
@@ -18,10 +19,10 @@ const SkeletonRow: React.FC = () => (
 );
 
 const PersonnelManagement: React.FC = () => {
-  const { personnel, setPersonnel } = useData();
+  const { personnel, addPersonnel, updatePersonnel, deletePersonnel, loading } = useData();
+  const { user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const { showToast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -30,11 +31,6 @@ const PersonnelManagement: React.FC = () => {
   const [editingPerson, setEditingPerson] = useState<Personnel | null>(null);
   const [deletingPerson, setDeletingPerson] = useState<Personnel | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 700);
-    return () => clearTimeout(timer);
-  }, []);
 
   const filteredPersonnel = personnel.filter(p =>
     `${p.name} ${p.family}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -53,8 +49,7 @@ const PersonnelManagement: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    const newPerson: Personnel = {
-      id: Date.now(),
+    const newPerson: NewRecord<Personnel> = {
       name: formData.get('name') as string,
       family: formData.get('family') as string,
       code: formData.get('code') as string,
@@ -62,11 +57,15 @@ const PersonnelManagement: React.FC = () => {
       role: formData.get('role') as 'نگهبان' | 'سرشیفت' | 'مدیر',
       status: 'فعال',
     };
-    await new Promise(res => setTimeout(res, 500)); // Simulate network delay
-    setPersonnel(prev => [...prev, newPerson]);
-    setIsSubmitting(false);
-    setIsAddModalOpen(false);
-    showToast('نیروی جدید با موفقیت افزوده شد.', 'success');
+    try {
+        await addPersonnel(newPerson);
+        setIsAddModalOpen(false);
+        showToast('نیروی جدید با موفقیت افزوده شد.', 'success');
+    } catch (error: any) {
+        showToast(`خطا در افزودن نیرو: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const openEditModal = (person: Personnel) => {
@@ -79,20 +78,23 @@ const PersonnelManagement: React.FC = () => {
     if (!editingPerson) return;
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    const updatedPerson = {
-        ...editingPerson,
+    const updatedData: Partial<Personnel> = {
         name: formData.get('name') as string,
         family: formData.get('family') as string,
         code: formData.get('code') as string,
         phone: formData.get('phone') as string,
         role: formData.get('role') as 'نگهبان' | 'سرشیفت' | 'مدیر',
     };
-    await new Promise(res => setTimeout(res, 500)); // Simulate network delay
-    setPersonnel(prev => prev.map(p => p.id === updatedPerson.id ? updatedPerson : p));
-    setIsSubmitting(false);
-    setIsEditModalOpen(false);
-    setEditingPerson(null);
-    showToast('اطلاعات نیرو با موفقیت به‌روزرسانی شد.', 'success');
+    try {
+        await updatePersonnel(editingPerson.id, updatedData);
+        setIsEditModalOpen(false);
+        setEditingPerson(null);
+        showToast('اطلاعات نیرو با موفقیت به‌روزرسانی شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در به‌روزرسانی: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
   
   const openDeleteModal = (person: Personnel) => {
@@ -103,14 +105,19 @@ const PersonnelManagement: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!deletingPerson) return;
     setIsSubmitting(true);
-    await new Promise(res => setTimeout(res, 500)); // Simulate network delay
-    setPersonnel(prev => prev.filter(p => p.id !== deletingPerson.id));
-    setIsSubmitting(false);
-    setIsDeleteModalOpen(false);
-    setDeletingPerson(null);
-    showToast('نیرو با موفقیت حذف شد.', 'success');
+    try {
+        await deletePersonnel(deletingPerson.id);
+        setIsDeleteModalOpen(false);
+        setDeletingPerson(null);
+        showToast('نیرو با موفقیت حذف شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در حذف نیرو: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   }
 
+  const canManage = user?.role === 'مدیر';
 
   return (
     <>
@@ -126,14 +133,16 @@ const PersonnelManagement: React.FC = () => {
                 onChange={(e) => setSearchTerm(e.target.value)}
                 aria-label="جستجو در لیست پرسنل"
               />
-            <button 
-              onClick={() => setIsAddModalOpen(true)}
-              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shrink-0 flex items-center gap-2 shadow-sm hover:shadow-md"
-              aria-label="افزودن نیروی جدید"
-            >
-              <PlusIcon className="w-5 h-5" />
-              <span>افزودن نیرو</span>
-            </button>
+            {canManage && (
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shrink-0 flex items-center gap-2 shadow-sm hover:shadow-md"
+                aria-label="افزودن نیروی جدید"
+              >
+                <PlusIcon className="w-5 h-5" />
+                <span>افزودن نیرو</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -146,11 +155,11 @@ const PersonnelManagement: React.FC = () => {
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">سمت</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">شماره تماس</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">وضعیت</th>
-                <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>
+                {canManage && <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>}
               </tr>
             </thead>
             <tbody className="animate-stagger-in">
-              {isLoading ? (
+              {loading ? (
                   Array.from({length: 5}).map((_, i) => <SkeletonRow key={i} />)
               ) : filteredPersonnel.length > 0 ? filteredPersonnel.map((person, index) => (
                 <tr key={person.id} className="border-b border-gray-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/60" style={{ animationDelay: `${index * 50}ms` }}>
@@ -163,24 +172,26 @@ const PersonnelManagement: React.FC = () => {
                       {person.status}
                     </span>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <button onClick={() => openEditModal(person)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400" title="ویرایش" aria-label={`ویرایش اطلاعات ${person.name} ${person.family}`}>
-                          <EditIcon className="w-5 h-5" />
-                      </button>
-                      <button onClick={() => openDeleteModal(person)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-red-500 dark:hover:text-red-400" title="حذف" aria-label={`حذف ${person.name} ${person.family}`}>
-                          <DeleteIcon className="w-5 h-5" />
-                      </button>
-                    </div>
-                  </td>
+                  {canManage && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openEditModal(person)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400" title="ویرایش" aria-label={`ویرایش اطلاعات ${person.name} ${person.family}`}>
+                            <EditIcon className="w-5 h-5" />
+                        </button>
+                        <button onClick={() => openDeleteModal(person)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-red-500 dark:hover:text-red-400" title="حذف" aria-label={`حذف ${person.name} ${person.family}`}>
+                            <DeleteIcon className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )) : (
                 <tr>
-                  <td colSpan={6} className="text-center p-16">
+                  <td colSpan={canManage ? 6 : 5} className="text-center p-16">
                     <div className="flex flex-col items-center gap-4 text-gray-500 dark:text-gray-400">
                       <FolderOpenIcon className="w-16 h-16 text-gray-300 dark:text-gray-600" />
                       <h3 className="text-lg font-medium">هیچ پرسنلی یافت نشد</h3>
-                      <p className="text-sm">برای شروع، یک نیروی جدید از دکمه بالا اضافه کنید.</p>
+                      {canManage && <p className="text-sm">برای شروع، یک نیروی جدید از دکمه بالا اضافه کنید.</p>}
                     </div>
                   </td>
                 </tr>

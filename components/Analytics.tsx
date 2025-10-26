@@ -1,4 +1,5 @@
 
+
 import React, { useState, useMemo, useEffect } from 'react';
 import { getJalaliDate, jalaliMonthNames, toPersianDigits } from '../utils/jalali';
 import type { Personnel, Shift, LeaveRequest, Post } from '../types';
@@ -71,7 +72,8 @@ const Analytics: React.FC = () => {
         const shiftsInMonth = shifts.filter(s => s.date.startsWith(monthStr));
         
         const shiftDistribution = personnel.map(p => {
-            const personShifts = shiftsInMonth.filter(s => s.personnelId === p.id);
+            // fix: Changed personnelId to personnel_id to match type definition.
+            const personShifts = shiftsInMonth.filter(s => s.personnel_id === p.id);
             return {
                 label: `${p.name} ${p.family.charAt(0)}.`,
                 day: personShifts.filter(s => s.type === 'روز').length,

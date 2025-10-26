@@ -1,5 +1,7 @@
 
 
+
+// fix: Import useState and useEffect to resolve 'cannot find name' errors.
 import React, { useState, useEffect } from 'react';
 import type { View } from '../App';
 import { UsersIcon, LeaveIcon, ExclamationTriangleIcon, UserPlusIcon, ReportIcon, PostIcon, ArrowUpRightIcon, DocumentPlusIcon } from './Icons';
@@ -73,14 +75,14 @@ interface DashboardProps {
 }
 
 const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
-  const { personnel, leaveRequests } = useData();
+  const { personnel, leaveRequests, loading: isDataLoading } = useData();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Simulate data fetching
-    const timer = setTimeout(() => setIsLoading(false), 700);
+    // Simulate data fetching for dashboard animations
+    const timer = setTimeout(() => setIsLoading(isDataLoading), 700);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isDataLoading]);
 
   const recentActivities = [
     { id: 1, text: 'شیفت شب برای علی رضایی ثبت شد.', time: '۲ ساعت پیش' },
@@ -92,11 +94,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveView }) => {
   const onLeavePersonnel = personnel
     .filter(p => p.status === 'مرخصی')
     .map(p => {
-        const leave = leaveRequests.find(lr => lr.personnelId === p.id && lr.status === 'تایید شده');
+        // fix: Changed personnelId to personnel_id to match type definition.
+        const leave = leaveRequests.find(lr => lr.personnel_id === p.id && lr.status === 'تایید شده');
         return {
             id: p.id,
             name: `${p.name} ${p.family}`,
-            until: leave ? leave.endDate : 'نامشخص'
+            // fix: Changed endDate to end_date to match type definition.
+            until: leave ? leave.end_date : 'نامشخص'
         }
     });
 

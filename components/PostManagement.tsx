@@ -1,10 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
-import type { Post } from '../types';
+import React, { useState } from 'react';
+import type { Post, NewRecord } from '../types';
 import Modal from './Modal';
 import { useToast } from './Toast';
 import { PlusIcon, EditIcon, DeleteIcon, FolderOpenIcon, ExclamationTriangleIcon } from './Icons';
 import { useData } from './DataContext';
+import { useAuth } from './AuthContext';
 
 const SkeletonRow: React.FC = () => (
     <tr className="border-b border-gray-200 dark:border-slate-700">
@@ -18,9 +19,9 @@ const SkeletonRow: React.FC = () => (
 
 
 const PostManagement: React.FC = () => {
-  const { posts, setPosts } = useData();
+  const { posts, addPost, updatePost, deletePost, loading } = useData();
+  const { user } = useAuth();
   const { showToast } = useToast();
-  const [isLoading, setIsLoading] = useState(true);
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -29,11 +30,6 @@ const PostManagement: React.FC = () => {
   const [editingPost, setEditingPost] = useState<Post | null>(null);
   const [deletingPost, setDeletingPost] = useState<Post | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 700);
-    return () => clearTimeout(timer);
-  }, []);
 
   const getPriorityClass = (priority: 'عادی' | 'مهم' | 'حیاتی') => {
     switch (priority) {
@@ -48,18 +44,21 @@ const PostManagement: React.FC = () => {
     e.preventDefault();
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    const newPost: Post = {
-      id: Date.now(),
+    const newPost: NewRecord<Post> = {
       name: formData.get('name') as string,
       location: formData.get('location') as string,
       priority: formData.get('priority') as 'عادی' | 'مهم' | 'حیاتی',
       notes: formData.get('notes') as string,
     };
-    await new Promise(res => setTimeout(res, 500));
-    setPosts(prev => [...prev, newPost]);
-    setIsSubmitting(false);
-    setIsAddModalOpen(false);
-    showToast('پست جدید با موفقیت افزوده شد.', 'success');
+    try {
+        await addPost(newPost);
+        setIsAddModalOpen(false);
+        showToast('پست جدید با موفقیت افزوده شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در افزودن پست: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
 
   const openEditModal = (post: Post) => {
@@ -72,19 +71,23 @@ const PostManagement: React.FC = () => {
     if (!editingPost) return;
     setIsSubmitting(true);
     const formData = new FormData(e.currentTarget);
-    const updatedPost: Post = {
-        ...editingPost,
+    const updatedData: Partial<Post> = {
         name: formData.get('name') as string,
         location: formData.get('location') as string,
         priority: formData.get('priority') as 'عادی' | 'مهم' | 'حیاتی',
         notes: formData.get('notes') as string,
     };
-    await new Promise(res => setTimeout(res, 500));
-    setPosts(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
-    setIsSubmitting(false);
-    setIsEditModalOpen(false);
-    setEditingPost(null);
-    showToast('نام پست با موفقیت به‌روزرسانی شد.', 'success');
+    
+    try {
+        await updatePost(editingPost.id, updatedData);
+        setIsEditModalOpen(false);
+        setEditingPost(null);
+        showToast('پست با موفقیت به‌روزرسانی شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در به‌روزرسانی پست: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
   
   const openDeleteModal = (post: Post) => {
@@ -95,27 +98,35 @@ const PostManagement: React.FC = () => {
   const handleConfirmDelete = async () => {
     if (!deletingPost) return;
     setIsSubmitting(true);
-    await new Promise(res => setTimeout(res, 500));
-    setPosts(prev => prev.filter(p => p.id !== deletingPost.id));
-    setIsSubmitting(false);
-    setIsDeleteModalOpen(false);
-    setDeletingPost(null);
-    showToast('پست با موفقیت حذف شد.', 'success');
+    try {
+        await deletePost(deletingPost.id);
+        setIsDeleteModalOpen(false);
+        setDeletingPost(null);
+        showToast('پست با موفقیت حذف شد.', 'success');
+    } catch(error: any) {
+        showToast(`خطا در حذف پست: ${error.message}`, 'error');
+    } finally {
+        setIsSubmitting(false);
+    }
   };
+
+  const canManage = user?.role === 'مدیر' || user?.role === 'سرشیفت';
 
   return (
     <>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <h2 className="text-2xl font-bold">مدیریت پست‌ها</h2>
-          <button 
-            onClick={() => setIsAddModalOpen(true)}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
-            aria-label="افزودن پست جدید"
-          >
-            <PlusIcon className="w-5 h-5" />
-            <span>افزودن پست جدید</span>
-          </button>
+          {canManage && (
+            <button 
+              onClick={() => setIsAddModalOpen(true)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
+              aria-label="افزودن پست جدید"
+            >
+              <PlusIcon className="w-5 h-5" />
+              <span>افزودن پست جدید</span>
+            </button>
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-800 rounded-xl border border-gray-200 dark:border-slate-700 overflow-x-auto shadow-sm">
@@ -126,11 +137,11 @@ const PostManagement: React.FC = () => {
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">نام پست</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">مکان</th>
                 <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">اهمیت</th>
-                <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>
+                {canManage && <th className="p-4 font-semibold text-gray-600 dark:text-gray-300">عملیات</th>}
               </tr>
             </thead>
             <tbody className="animate-stagger-in">
-              {isLoading ? (
+              {loading ? (
                   Array.from({length: 4}).map((_, i) => <SkeletonRow key={i} />)
               ) : posts.length > 0 ? posts.map((post, index) => (
                 <tr key={post.id} className="border-b border-gray-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/60" style={{ animationDelay: `${index * 50}ms` }}>
@@ -142,24 +153,26 @@ const PostManagement: React.FC = () => {
                       {post.priority}
                     </span>
                   </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => openEditModal(post)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400" title="ویرایش" aria-label={`ویرایش پست ${post.name}`}>
-                            <EditIcon className="w-5 h-5" />
-                        </button>
-                        <button onClick={() => openDeleteModal(post)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-red-500 dark:hover:text-red-400" title="حذف" aria-label={`حذف پست ${post.name}`}>
-                            <DeleteIcon className="w-5 h-5" />
-                        </button>
-                    </div>
-                  </td>
+                  {canManage && (
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                          <button onClick={() => openEditModal(post)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400" title="ویرایش" aria-label={`ویرایش پست ${post.name}`}>
+                              <EditIcon className="w-5 h-5" />
+                          </button>
+                          <button onClick={() => openDeleteModal(post)} className="p-1.5 rounded-full text-gray-400 hover:bg-gray-200 dark:hover:bg-slate-600 hover:text-red-500 dark:hover:text-red-400" title="حذف" aria-label={`حذف پست ${post.name}`}>
+                              <DeleteIcon className="w-5 h-5" />
+                          </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               )) : (
                 <tr>
-                    <td colSpan={5} className="text-center p-16">
+                    <td colSpan={canManage ? 5 : 4} className="text-center p-16">
                       <div className="flex flex-col items-center gap-4 text-gray-500 dark:text-gray-400">
                         <FolderOpenIcon className="w-16 h-16 text-gray-300 dark:text-gray-600" aria-hidden="true"/>
                         <h3 className="text-lg font-medium">هیچ پستی ثبت نشده است</h3>
-                        <p className="text-sm">برای شروع، یک پست جدید از دکمه بالا اضافه کنید.</p>
+                        {canManage && <p className="text-sm">برای شروع، یک پست جدید از دکمه بالا اضافه کنید.</p>}
                       </div>
                     </td>
                 </tr>
