@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>اپلیکیشن مدیریت شیفت حراست</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+      body {
+        font-family: 'Vazirmatn', sans-serif;
+      }
+      
+      /* --- UI/UX Improvements --- */
+      
+      :root {
+        --color-primary-500: #6366f1; /* indigo-500 */
+        --color-primary-600: #4f46e5; /* indigo-600 */
+        /* Refined Dark Mode Palette */
+        --color-bg-dark: #1e293b; /* slate-800 */
+        --color-bg-darker: #0f172a; /* slate-900 */
+        --color-card-dark: #1e293b; /* slate-800 */
+        --color-border-dark: #334155; /* slate-700 */
+      }
+
+      /* 1. Global smooth transitions for better feel */
+      * {
+        transition: background-color .2s ease-in-out, color .2s ease-in-out, border-color .2s ease-in-out, opacity .2s ease-in-out, box-shadow .2s ease-in-out, transform .2s ease-in-out;
+      }
+      
+      /* 2. Consistent Focus Ring for Accessibility & Style */
+      :focus-visible {
+        outline: 2px solid var(--color-primary-500);
+        outline-offset: 2px;
+        border-radius: 6px;
+      }
+      button:focus, a:focus, input:focus, select:focus, textarea:focus {
+        outline: none;
+      }
+
+
+      /* 3. Custom scrollbar for a modern look */
+      ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(156, 163, 175, 0.4); /* gray-400 with opacity */
+        border-radius: 4px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(107, 114, 128, 0.5); /* gray-500 with opacity */
+      }
+      html.dark ::-webkit-scrollbar-thumb {
+        background-color: rgba(75, 85, 99, 0.5); /* gray-600 with opacity */
+      }
+       html.dark ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(107, 114, 128, 0.6); /* gray-500 with opacity */
+      }
+
+      /* 4. Refined background for light & dark mode */
+      body {
+         background-color: #f8fafc; /* slate-50 */
+      }
+      html.dark body {
+        background-color: var(--color-bg-darker);
+      }
+
+      /* 5. Button Press Effect */
+      button:active {
+        transform: scale(0.97);
+        transition-duration: .05s;
+      }
+
+      /* 6. Skeleton Loader Animation */
+      @keyframes skeleton-loading {
+        0% { background-color: hsl(210 20% 88%); }
+        100% { background-color: hsl(210 20% 95%); }
+      }
+      html.dark @keyframes skeleton-loading {
+        0% { background-color: hsl(220 15% 25%); }
+        100% { background-color: hsl(220 15% 35%); }
+      }
+      .skeleton-loader {
+        animation: skeleton-loading 1s linear infinite alternate;
+        border-radius: 0.25rem;
+      }
+
+      /* 7. Staggered Animation Entry */
+      @keyframes fade-in-up {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+      }
+      .animate-stagger-in > * {
+        opacity: 0;
+        animation: fade-in-up 0.5s ease-out forwards;
+      }
+
+      /* 8. Zebra-striping for Tables */
+      tbody tr:nth-child(even) {
+        background-color: #f8fafc; /* slate-50 */
+      }
+      html.dark tbody tr:nth-child(even) {
+        background-color: rgba(255, 255, 255, 0.02);
+      }
+
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.27.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
